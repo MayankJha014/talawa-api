@@ -125,21 +125,61 @@ builder.mutationField("updatePluginStatus", (t) =>
 		},
 		resolve: async (_parent, { pluginId, orgId }, ctx) => {
 			try {
-				// Check authentication
-				if (!ctx.currentClient.isAuthenticated) {
+				// Check authorization - verify the user has admin rights for the organization
+				if (!ctx.currentClient.user) {
 					throw new TalawaGraphQLError({
 						extensions: {
 							code: "unauthenticated",
+							message: "User is not authenticated",
+						},
+					});
+				}
+				const currentUserId = ctx.currentClient.user.id;
+				const currentUser = await ctx.drizzleClient.query.usersTable.findFirst({
+					with: {
+						organizationMembershipsWhereMember: {
+							columns: {
+								role: true,
+							},
+							where: (fields, operators) =>
+								operators.eq(fields.organizationId, orgId),
+						},
+					},
+					where: (fields, operators) => operators.eq(fields.id, currentUserId),
+				});
+
+				if (!currentUser) {
+					throw new TalawaGraphQLError({
+						extensions: {
+							code: "unauthorized_action",
+							message: "User not found",
+						},
+					});
+				}
+				const isGlobalAdmin = currentUser.role === "administrator";
+				const currentUserOrganizationMembership =
+					currentUser.organizationMembershipsWhereMember[0];
+				const isOrgAdmin =
+					currentUserOrganizationMembership?.role === "administrator";
+
+				if (!isGlobalAdmin && !isOrgAdmin) {
+					throw new TalawaGraphQLError({
+						extensions: {
+							code: "unauthorized_action",
+							message:
+								"Only organization administrators can update plugin installation status",
 						},
 					});
 				}
 
-				// Find plugin
+				// Fetch the plugin from the cache
 				const plugin = pluginCacheById.get(pluginId);
+
 				if (!plugin) {
 					throw new TalawaGraphQLError({
 						extensions: {
 							code: "arguments_associated_resources_not_found",
+							message: "Plugin not found",
 							issues: [
 								{
 									argumentPath: ["pluginId"],

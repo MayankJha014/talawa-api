@@ -1,5 +1,5 @@
 import { z } from "zod";
-// src/graphql/types/Plugin/Plugin.ts
+// src/graphql/types/Plugins/Plugins.ts
 
 import { builder } from "~/src/graphql/builder";
 
